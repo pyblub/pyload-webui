@@ -6,9 +6,10 @@ import re
 
 from bottle import HTTPError, redirect, request
 from future import standard_library
-standard_library.install_aliases()
 
-from .interface import API, SETUP
+from .iface import API, SETUP
+
+standard_library.install_aliases()
 
 
 def add_json_header(r):
@@ -20,16 +21,16 @@ def add_json_header(r):
 
 
 def set_session(request, user):
-    s = request.environ.get('beaker.session')
-    s['uid'] = user.uid
-    s.save()
-    return s
+    ses = request.environ.get('beaker.session')
+    ses['uid'] = user.uid
+    ses.save()
+    return ses
 
 
-def get_user_api(s):
-    if s:
-        uid = s.get("uid", None)
-        if (uid is not None) and (API is not None):
+def get_user_api(ses):
+    if ses:
+        uid = ses.get("uid", None)
+        if uid is not None and API is not None:
             return API.with_user_context(uid)
     return None
 

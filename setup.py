@@ -15,23 +15,30 @@ import os
 import re
 import shutil
 import subprocess
-
 from itertools import chain
 
 from setuptools import Command, distutils, find_packages, setup
+from setuptools.command.bdist_egg import bdist_egg
 from setuptools.command.build_py import build_py
 from setuptools.command.sdist import sdist
 
 
-def _extract_text(path, fromline=None, toline=None):
-    text = None
-    path = os.path.join(os.path.dirname(__file__), path)
-    with io.open(path) as fp:
-        if fromline or toline:
-            text = ''.join(fp.readlines()[fromline:toline])
-        else:
-            text = fp.read()
-    return text.strip()
+_NAMESPACE = 'pyload'
+_PACKAGE = 'pyload.webui'
+_PACKAGE_NAME = 'pyload.webui'
+_PACKAGE_PATH = 'src/pyload/webui'
+_CREDITS = (('Walter Purcaro', 'vuolter@gmail.com', '2015-2017'),
+            ('pyLoad Team', 'info@pyload.net', '2009-2015'))
+
+
+def _read_text(file):
+    with io.open(file, encoding='utf-8')  as fp:
+        return fp.read().strip()
+
+
+def _write_text(file, text):
+    with io.open(file, mode='w', encoding='utf-8') as fp:
+        fp.write(text.strip() + os.linesep)
 
 
 def _pandoc_convert(text):
@@ -62,39 +69,68 @@ def _purge_text(text):
     return re.sub('.*<.+>.*', '', text).strip()
 
 
-def _gen_long_description(fromline=None, toline=None, rst=False):
-    readme = _purge_text(_extract_text('README.md', fromline, toline))
-    history = _purge_text(_extract_text('CHANGELOG.md'))
-    desc = '\r\n\r\n'.join([readme, history])
-    try:
-        return _convert_text(desc)
-    except Exception as e:
-        if rst:
-            raise
-        else:
-            print(str(e))
-    return desc
+def _gen_long_description():
+    readme = _purge_text(_read_text('README.md').split(os.linesep * 3, 1)[0])
+    history = _purge_text(_read_text('CHANGELOG.md'))
+    desc = os.linesep.join((readme, history))
+    return _convert_text(desc)
 
 
-def _get_long_description(fromline=None, toline=None):
+def _get_long_description():
     try:
-        return _extract_text('README.rst')
+        return _read_text('README.rst')
     except IOError:
-        return _gen_long_description(fromline, toline)
+        return _gen_long_description()
 
 
-def _get_requires(filename):
-    path = os.path.join('requirements', filename)
-    return _extract_text(path).splitlines()
+__re_section = re.compile(r'^\s*\[(.*?)\]\s+([^[]*)')
+__re_deps = re.compile(r'^\s*(?![#; ]+)([^\s]+)')
+
+def _extract_requires(text):
+    deps = __re_deps.findall(__re_section.split(text, maxsplit=1))
+    extras = dict((opt, deps) for opt, entries in __re_section.findall(text)
+                  for deps in __re_deps.findall(entries) if deps)
+    return deps, extras
+
+
+def _get_requires(name):
+    file = os.path.join('requirements', name + '.txt')
+    text = _read_text(file)
+    deps, extras = _extract_requires(text)
+    if name.startswith('extra'):
+        extras['full'] = list(set(chain(*list(extras.values()))))
+        return extras
+    return deps
 
 
 def _get_version():
-    return _extract_text('VERSION')
+    return _read_text('VERSION')
+
+
+class MakeReadme(Command):
+    """
+    Create a valid README.rst file
+    """
+    READMEFILE = 'README.rst'
+
+    description = 'create a valid README.rst file'
+    user_options = []
+
+    def initialize_options(self):
+        pass
+
+    def finalize_options(self):
+        pass
+
+    def run(self):
+        if os.path.isfile(self.READMEFILE):
+            return None
+        _write_text(self.READMEFILE, _gen_long_description())
 
 
 class BuildLocale(Command):
     """
-    BuildPy the locales
+    Build the locales
     """
     description = 'build the locales'
     user_options = []
@@ -107,10 +143,9 @@ class BuildLocale(Command):
 
     def run(self):
         try:
-            os.mkdir('locale')
+            os.makedirs(os.path.join(_PACKAGE_PATH, 'locale'))
         except OSError as e:
             print(str(e))
-            return None
         self.run_command('extract_messages')
         self.run_command('init_catalog')
         # self.run_command('download_catalog')
@@ -121,6 +156,8 @@ class BuildNode(Command):
     """
     BuildPy the nodejs app
     """
+    NODEDIR = os.path.join(_PACKAGE_PATH, 'node_modules')
+
     description = 'build the nodejs app'
     user_options = []
 
@@ -131,7 +168,7 @@ class BuildNode(Command):
         pass
 
     def run(self):
-        if os.path.isdir('src/pyload/webui/node_modules'):
+        if os.path.isdir(self.NODEDIR):
             return None
         try:
             # if os.name == 'nt':
@@ -139,22 +176,39 @@ class BuildNode(Command):
                 # subprocess.check_call(
                     # 'npm install --global windows-build-tools', shell=True)
             subprocess.check_call(
-                'cd src/pyload/webui && npm install --only=dev', shell=True)
+                'cd {0} && npm install --only=dev'.format(_PACKAGE_PATH), shell=True)
             subprocess.check_call(
-                'cd src/pyload/webui && node node_modules/grunt-cli/bin/grunt build',
+                'cd {0} && node node_modules/grunt-cli/bin/grunt build'.format(_PACKAGE_PATH),
                 shell=True)
         except subprocess.CalledProcessError:
             distutils.log.warn("Failed to build the nodejs app")
-        shutil.rmtree('src/pyload/webui/node_modules', ignore_errors=True)
+        shutil.rmtree(self.NODEDIR, ignore_errors=True)
         return subprocess.call(
-            'cd src/pyload/webui && npm install --production', shell=True)
+            'cd {0} && npm install --production'.format(_PACKAGE_PATH), shell=True)
 
 
-class DownloadCatalog(Command):
+# class DownloadCatalog(Command):
+    # """
+    # Download the translation catalog from the remote repository
+    # """
+    # description = 'download the translation catalog from the remote repository'
+    # user_options = []
+
+    # def initialize_options(self):
+        # pass
+
+    # def finalize_options(self):
+        # pass
+
+    # def run(self):
+        # raise NotImplementedError
+
+
+class PreBuild(Command):
     """
-    Download the translation catalog from the remote repository
+    Prepare for build
     """
-    description = 'download the translation catalog from the remote repository'
+    description = 'prepare for build'
     user_options = []
 
     def initialize_options(self):
@@ -163,28 +217,36 @@ class DownloadCatalog(Command):
     def finalize_options(self):
         pass
 
+    def _makeabout(self):
+        file = os.path.join(_PACKAGE_PATH, '__about__.py')
+        credits = ', '.join(str(info) for info in _CREDITS)
+        text = """# -*- coding: utf-8 -*-
+
+from semver import parse_version_info
+
+__namespace__ = {0}
+__package__ = {1}
+__package_name__ = {2}
+__version__ = {3}
+__version_info__ = parse_version_info(__version__)
+__credits__ = ({4})
+""".format(_NAMESPACE, _PACKAGE, _PACKAGE_NAME, _get_version(), credits)
+        _write_text(file, text)
+
     def run(self):
-        raise NotImplementedError
+        self._makeabout()
+        self.run_command('build_node')
+        self.run_command('build_locale')
 
 
-class BuildReadme(Command):
+class BdistEgg(bdist_egg):
     """
-    Create a valid README.rst file
+    Custom ``bdist_egg`` command
     """
-    description = 'create a valid README.rst file'
-    user_options = []
-
-    def initialize_options(self):
-        pass
-
-    def finalize_options(self):
-        pass
-
     def run(self):
-        if os.path.isfile('README.rst'):
-            return None
-        with io.open('README.rst', mode='w') as fp:
-            fp.write(_gen_long_description(toline=30))
+        if not self.dry_run:
+            self.run_command('prebuild')
+        bdist_egg.run(self)
 
 
 class BuildPy(build_py):
@@ -193,9 +255,7 @@ class BuildPy(build_py):
     """
     def run(self):
         if not self.dry_run:
-            self.run_command('build_readme')
-            self.run_command('build_node')
-            self.run_command('build_locale')
+            self.run_command('prebuild')
         build_py.run(self)
 
 
@@ -205,55 +265,58 @@ class Sdist(sdist):
     """
     def run(self):
         if not self.dry_run:
-            self.run_command('build_py')
+            self.run_command('makereadme')
         sdist.run(self)
 
 
-NAME = "pyload.webui"
+NAME = _PACKAGE_NAME
 VERSION = _get_version()
 STATUS = "1 - Planning"
 DESC = """pyLoad WebUI module"""
-LONG_DESC = _get_long_description(toline=30)
+LONG_DESC = _get_long_description()
 KEYWORDS = ["pyload"]
 URL = "https://pyload.net"
 DOWNLOAD_URL = "https://github.com/pyload/webui/releases"
 LICENSE = "GNU Affero General Public License v3"
-AUTHOR = "Walter Purcaro"
-AUTHOR_EMAIL = "vuolter@gmail.com"
+AUTHOR = _CREDITS[0][0]
+AUTHOR_EMAIL = _CREDITS[0][1]
 PLATFORMS = ['any']
 PACKAGES = find_packages('src')
 PACKAGE_DIR = {'': 'src'}
 INCLUDE_PACKAGE_DATA = True
-NAMESPACE_PACKAGES = ['pyload']
-INSTALL_REQUIRES = _get_requires('install.txt')
-SETUP_REQUIRES = _get_requires('setup.txt')
+NAMESPACE_PACKAGES = [_NAMESPACE]
+INSTALL_REQUIRES = _get_requires('install')
+SETUP_REQUIRES = _get_requires('setup')
 # TEST_SUITE = ''
 # TESTS_REQUIRE = []
-EXTRAS_REQUIRE = {'bjoern;os_name!="nt"': ['bjoern']}
-EXTRAS_REQUIRE['full'] = list(set(chain(*EXTRAS_REQUIRE.values())))
+EXTRAS_REQUIRE = _get_requires('extra')
 PYTHON_REQUIRES = ">=2.6,!=3.0,!=3.1,!=3.2"
 CMDCLASS = {
+    'bdist_egg': BdistEgg,
     'build_locale': BuildLocale,
     'build_node': BuildNode,
     'build_py': BuildPy,
-    'build_readme': BuildReadme,
-    'download_catalog': DownloadCatalog,
+    # 'download_catalog': DownloadCatalog,
+    'makereadme': MakeReadme,
+    'prebuild': PreBuild,
     'sdist': Sdist
 }
 MESSAGE_EXTRACTORS = {
-    'src': [
+    _PACKAGE_PATH: [
         ('**.py', 'python', None),
-        ('pyload/webui/app/scripts/**.js', 'javascript', None)
+        ('app/scripts/**.js', 'javascript', None)
     ]
 }
-ZIP_SAFE = False
+ZIP_SAFE = True
 CLASSIFIERS = [
     "Development Status :: {0}".format(STATUS),
     "Environment :: Web Environment",
     "Intended Audience :: End Users/Desktop",
     "License :: OSI Approved :: {0}".format(LICENSE),
     "Natural Language :: English",
-    "Operating System :: OS Independent",
+    # "Operating System :: MacOS :: MacOS X",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX",
     "Programming Language :: Python :: 2",
     "Programming Language :: Python :: 2.6",
     "Programming Language :: Python :: 2.7",
@@ -262,14 +325,16 @@ CLASSIFIERS = [
     "Programming Language :: Python :: 3.4",
     "Programming Language :: Python :: 3.5",
     "Programming Language :: Python :: 3.6",
-    "Programming Language :: Python :: Implementation :: PyPy",
+    "Programming Language :: Python :: Implementation :: CPython",
+    # "Programming Language :: Python :: Implementation :: PyPy",
     "Topic :: Communications",
     "Topic :: Communications :: File Sharing",
     "Topic :: Internet",
     "Topic :: Internet :: File Transfer Protocol (FTP)",
     "Topic :: Internet :: WWW/HTTP"
 ]
-SETUP_MAP = dict(
+
+setup(
     name=NAME,
     version=VERSION,
     description=DESC,
@@ -296,5 +361,3 @@ SETUP_MAP = dict(
     zip_safe=ZIP_SAFE,
     classifiers=CLASSIFIERS
 )
-
-setup(**SETUP_MAP)

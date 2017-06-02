@@ -2,24 +2,22 @@
 
 from __future__ import absolute_import, unicode_literals
 
-from builtins import str
 import io
-from builtins import dict
+from builtins import dict, str
 from contextlib import closing
 from traceback import format_exc, print_exc
 from urllib.parse import unquote
 
 from bottle import HTTPError, parse_auth, request, response, route
 from future import standard_library
-standard_library.install_aliases()
-
 from pyload.core.datatype import ExceptionObject
 from pyload.rpc.jsonconverter import BaseEncoder, dumps, loads
 from pyload.utils import purge
 
-from .interface import API, session
+from .iface import API, session
 from .utils import add_json_header, get_user_api, set_session
 
+standard_library.install_aliases()
 
 # used for gzip compression
 try:
@@ -38,8 +36,8 @@ def json_response(obj):
     response.headers['Content-Encoding'] = 'gzip'
     zbuf = io.StringIO()
     try:
-        with closing(gzip.GzipFile(mode='wb', compresslevel=6, fileobj=zbuf)) as zfile:
-            zfile.write(result)
+        with closing(gzip.GzipFile(mode='wb', compresslevel=6, fileobj=zbuf)) as fp:
+            fp.write(result)
     except NameError:
         pass
     return zbuf.getvalue()

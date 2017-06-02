@@ -2,33 +2,26 @@
 
 from __future__ import absolute_import, unicode_literals
 
-from builtins import str
-import io
 import os
 import re
 from base64 import standard_b64decode
 from binascii import unhexlify
-from builtins import int
+from builtins import int, str
 from traceback import print_exc
 from urllib.parse import unquote
 
 from bottle import HTTPError, request, route
+from cryptography.fernet import Fernet
 from future import standard_library
+from pyload.utils import purge
+from pyload.utils.fs import lopen
+
+from .iface import API, DL_ROOT
+
 standard_library.install_aliases()
-
-from pyload.utils import format
-
-from .interface import API, DL_ROOT
-
 
 try:
     import js2py
-except ImportError:
-    pass
-
-
-try:
-    from Crypto.Cipher import AES
 except ImportError:
     pass
 
@@ -55,7 +48,7 @@ def local_check(function):
 @route("/flash", method="POST")
 @local_check
 def flash(id="0"):
-    return "JDownloader\r\n"
+    return "JDownloader\n"
 
 
 @route("/flash/add", method="POST")
@@ -75,12 +68,11 @@ def add(request):
 @route("/flash/addcrypted", method="POST")
 @local_check
 def addcrypted():
-
     package = request.forms.get('referer', 'ClickAndLoad Package')
     dlc = request.forms['crypted'].replace(" ", "+")
 
-    dlc_path = os.path.join(DL_ROOT, format.name(package) + ".dlc")
-    with io.open(dlc_path, mode='wb') as fp:
+    dlc_path = os.path.join(DL_ROOT, purge.name(package) + ".dlc")
+    with lopen(dlc_path, mode='wb') as fp:
         fp.write(dlc)
 
     try:
@@ -88,7 +80,7 @@ def addcrypted():
     except Exception:
         return HTTPError()
     else:
-        return "success\r\n"
+        return "success\n"
 
 
 @route("/flash/addcrypted2", method="POST")
@@ -99,7 +91,7 @@ def addcrypted2():
     crypted = request.forms['crypted']
     jk = request.forms['jk']
 
-    crypted = standard_b64decode(unquote(crypted.replace(" ", "+")))
+    token = standard_b64decode(unquote(crypted.replace(" ", "+")))
     try:
         jk = "{0} f()".format(jk)
         jk = js2py.eval_js(jk)
@@ -116,19 +108,15 @@ def addcrypted2():
                 # print("Could not decrypt key, please install py-spidermonkey or ossp-js")
 
     try:
-        Key = unhexlify(jk)
+        key = unhexlify(jk)
     except Exception:
         print("Could not decrypt key, please install py-spidermonkey or ossp-js")
         return "failed"
-
-    IV = Key
-
-    obj = AES.new(Key, AES.MODE_CBC, IV)
-    result = obj.decrypt(crypted).replace(
+    f = Fernet(key)
+    result = f.decrypt(token).replace(
         "\x00", "").replace("\r", "").split("\n")
 
     result = [x for x in result if x != ""]
-
     try:
         if package:
             API.add_package(package, result, paused=True)
@@ -138,7 +126,7 @@ def addcrypted2():
         print_exc()
         return "failed"
     else:
-        return "success\r\n"
+        return "success\n"
 
 
 @route("/flashgot_pyload")

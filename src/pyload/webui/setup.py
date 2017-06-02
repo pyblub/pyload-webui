@@ -3,15 +3,16 @@
 from __future__ import absolute_import, unicode_literals
 
 import json
+import time
 from builtins import dict
-from time import time
 
 from bottle import HTTPError, request, response, route
 from future import standard_library
-standard_library.install_aliases()
 
-from .interface import SETUP
+from .iface import SETUP
 from .utils import add_json_header
+
+standard_library.install_aliases()
 
 
 # returns http error
@@ -32,10 +33,10 @@ def setup_required(func):
             return error(409, "Done")
 
         # setup timed out due to inactivity
-        if timestamp + TIMEOUT * 60 < time():
+        if timestamp + TIMEOUT * 60 < time.time():
             return error(410, "Timeout")
 
-        timestamp = time()
+        timestamp = time.time()
 
         return func(*args, **kwargs)
 
@@ -43,7 +44,7 @@ def setup_required(func):
 
 # setup will close after inactivity
 TIMEOUT = 15
-timestamp = time()
+timestamp = time.time()
 
 
 @route("/setup")

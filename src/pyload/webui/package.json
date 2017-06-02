@@ -1,7 +1,7 @@
 {
     "name" : "pyload-webui",
     "version" : "1.0.0",
-    "description" : "pyLoad next-gen web user interface",
+    "description" : "pyLoad NG WebUI",
     "scripts" : {
         "test" : "echo \"Error : no test specified\" && exit 1"
     },

@@ -2,11 +2,11 @@
 
 from __future__ import absolute_import, unicode_literals
 
-from builtins import str
-from builtins import object
+from builtins import object, str
 
 from bottle import ServerAdapter as _ServerAdapter
 from future import standard_library
+
 standard_library.install_aliases()
 
 

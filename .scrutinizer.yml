@@ -148,7 +148,7 @@ checks:
     no_unused_expressions: false
 tools:
   pylint:
-    python_version: '3'
+    python_version: 3
     # config_file: .pylintrc
 filter:
   excluded_paths:

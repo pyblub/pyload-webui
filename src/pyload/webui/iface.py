@@ -7,20 +7,19 @@ from __future__ import absolute_import, unicode_literals
 import os
 import sys
 
-import bottle
-# Middlewares
-from beaker.middleware import SessionMiddleware
-from future import standard_library
-standard_library.install_aliases()
+from pkg_resources import resource_exists, resource_filename
 
+import bottle
+from future import standard_library
 from pyload.core.thread import webserver as ServerThread  # TODO: Recheck...
-from pyload.utils.web.middleware import PrefixMiddleware, StripPathMiddleware
 # Last routes to register
 from pyload.webui import api, cnl, pyload, setup
 
+from .__about__ import __package__
+from .middlewares import (PrefixMiddleware, SessionMiddleware,
+                          StripPathMiddleware)
 
-WEBDIR = os.path.abspath(os.path.join(os.path.dirname(__file__)))
-APPDIR = os.path.join(WEBDIR, 'app')
+standard_library.install_aliases()
 
 SETUP = None
 API = None
@@ -44,19 +43,20 @@ if PREFIX:
     if PREFIX and not PREFIX.startswith("/"):
         PREFIX = "/{0}".format(PREFIX)
 
-# APP_PATH = "app"
-UNAVAILALBE = True
-
 # webui build is available
-if os.path.exists(os.path.join(WEBDIR, "node_modules")):
-    UNAVAILALBE = False
-if os.path.exists(os.path.join(WEBDIR, "min", "index.html")):
-    APPDIR = os.path.join(WEBDIR, 'min')
+if resource_exists(__package__, 'node_modules'):
+    UNAVAILABLE = False
+else:
+    UNAVAILABLE = True
+
+if resource_exists(__package__, 'min/index.html'):
+    APPDIR = resource_filename(__package__, 'min')
+else:
+    APPDIR = resource_filename(__package__, 'app')
 
 DEBUG = config.get(
     'webui', 'debug') or "-d" in sys.argv or "--debug" in sys.argv
 bottle.debug(DEBUG)
-
 
 session_opts = {
     'session.type': 'file',
@@ -70,7 +70,6 @@ web = StripPathMiddleware(session)
 
 if PREFIX:
     web = PrefixMiddleware(web, prefix=PREFIX)
-
 
 # Server Adapter
 def run_server(host, port, server):

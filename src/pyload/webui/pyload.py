@@ -9,29 +9,29 @@ import time
 
 from bottle import redirect, request, response, route, static_file, template
 from future import standard_library
-standard_library.install_aliases()
 
-from .interface import API, APPDIR, PREFIX, SETUP, UNAVAILALBE
+from .iface import API, APPDIR, PREFIX, SETUP, UNAVAILABLE
 from .utils import add_json_header, login_required, select_language
 
+standard_library.install_aliases()
 
 # Cache file names that are available gzipped
 GZIPPED = {}
 
 
-@route('/icons/<path:path>')
-def serve_icon(path):
+@route('/icons/<path:filename>')
+def serve_icon(filename):
     # TODO: send real file, no redirects
     return redirect(PREFIX if PREFIX else '../images/icon.png')
-    # return static_file(path, root=join("tmp", "icons"))
+    # return static_file(filename, root=join('tmp', 'icons'))
 
 
 @route("/download/:fid")
 @login_required('Download')
 def download(fid, api):
     # TODO: check owner ship
-    path, name = api.get_file_path(fid)
-    return static_file(name, path, download=True)
+    root, filename = api.get_file_path(fid)
+    return static_file(filename, root, download=True)
 
 
 @route("/i18n")
@@ -54,7 +54,7 @@ def index():
     if 'HTTP_IF_MODIFIED_SINCE' in request.environ:
         del request.environ['HTTP_IF_MODIFIED_SINCE']
 
-    if UNAVAILALBE:
+    if UNAVAILABLE:
         return serve_static("unavailable.html")
 
     resp = serve_static('index.html')
@@ -86,23 +86,23 @@ def index():
 # Very last route that is registered, could match all uris
 
 
-@route('/<path:path>')
-def serve_static(path):
+@route('/<path:filename>')
+def serve_static(filename):
     # save if this resource is available as gz
-    if path not in GZIPPED:
-        GZIPPED[path] = os.path.exists(os.path.join(APPDIR, path + ".gz"))
+    if filename not in GZIPPED:
+        GZIPPED[filename] = os.path.isfile(os.path.join(APPDIR, filename + ".gz"))
 
     # gzipped and clients accepts it
     # TODO: index.html is not gzipped, because of template processing
     gzipped = False
-    if GZIPPED[path] and "gzip" in request.get_header(
-            "Accept-Encoding", "") and path != "index.html":
+    if GZIPPED[filename] and "gzip" in request.get_header(
+            "Accept-Encoding", "") and filename != "index.html":
         gzipped = True
-        path += ".gz"
+        filename += ".gz"
 
-    resp = static_file(path, root=APPDIR)
+    resp = static_file(filename, root=APPDIR)
 
-    if path.endswith(".html") or path.endswith(".html.gz"):
+    if filename.endswith(".html") or filename.endswith(".html.gz"):
         # tell the browser all html files must be revalidated
         resp.headers['Cache-Control'] = "must-revalidate"
     elif resp.status_code == 200:
